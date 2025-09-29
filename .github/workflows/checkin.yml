@@ -24,10 +24,21 @@ jobs:
 
       - name: ✅ 运行签到脚本
         env:
+          TELEGRAM_ENABLE: ${{ secrets.TELEGRAM_ENABLE }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          NTFY_ENABLE: ${{ secrets.NTFY_ENABLE }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
+          NTFY_USER: ${{ secrets.NTFY_USER }}
+          NTFY_PASS: ${{ secrets.NTFY_PASS }}
           USER1: ${{ secrets.USER1 }}
           PASS1: ${{ secrets.PASS1 }}
+          USER2: ${{ secrets.USER2 }}
+          PASS2: ${{ secrets.PASS2 }}
+          USER3: ${{ secrets.USER3 }}
+          PASS3: ${{ secrets.PASS3 }}
+
         run: python checkin.py
 
       - name: 📌 执行完成

@@ -185,7 +185,7 @@ def checkin(account, config):
     result_emoji = "✅" if checkin_result.get('ret') == 1 else "⚠️"
 
     user_info_msg = fetch_and_extract_info(domain, {'Cookie': '; '.join([f"{key}={value}" for key, value in cookies.items()])})
-    final_msg = f"{account_info}{user_info_msg}🎉 签到结果: {result_emoji} {result_msg}\n"
+    final_msg = f"{account_info}{user_info_msg}🎉 签到结果: {result_emoji} {result_msg}\n\n"
 
     send_telegram_message(final_msg, config)
     send_ntfy_message(final_msg, config)

@@ -4,7 +4,7 @@ import requests
 import time
 import re
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # 解析用户信息
 def fetch_and_extract_info(domain, headers):
@@ -45,9 +45,19 @@ def fetch_and_extract_info(domain, headers):
 # 读取环境变量并生成配置
 def generate_config():
     domain = "https://69yun69.com"
+    
+    # Telegram 配置
+    tg_enable = os.getenv('TELEGRAM_ENABLE', 'false').lower() == 'true'
     bot_token = os.getenv('BOT_TOKEN', '')
     chat_id = os.getenv('CHAT_ID', '')
     
+    # Ntfy 配置
+    ntfy_enable = os.getenv('NTFY_ENABLE', 'false').lower() == 'true'
+    ntfy_topic = os.getenv('NTFY_TOPIC', '')
+    ntfy_server = os.getenv('NTFY_SERVER', 'https://ntfy.sh')
+    ntfy_user = os.getenv('NTFY_USER', '')
+    ntfy_pass = os.getenv('NTFY_PASS', '')
+
     accounts = []
     index = 1
     while True:
@@ -57,11 +67,36 @@ def generate_config():
         accounts.append({'user': user, 'pass': password})
         index += 1
 
-    return {'domain': domain, 'BotToken': bot_token, 'ChatID': chat_id, 'accounts': accounts}
+    return {
+        'domain': domain,
+        'accounts': accounts,
+        'telegram': {
+            'enable': tg_enable,
+            'bot_token': bot_token,
+            'chat_id': chat_id
+        },
+        'ntfy': {
+            'enable': ntfy_enable,
+            'topic': ntfy_topic,
+            'server': ntfy_server,
+            'user': ntfy_user,
+            'password': ntfy_pass
+        }
+    }
 
 # 发送 Telegram 消息
-def send_message(msg, bot_token, chat_id):
-    now = datetime.utcnow() + timedelta(hours=8)  # 转换为北京时间
+def send_telegram_message(msg, config):
+    tg_config = config.get('telegram', {})
+    if not tg_config.get('enable'):
+        return
+
+    bot_token = tg_config.get('bot_token')
+    chat_id = tg_config.get('chat_id')
+
+    if not bot_token or not chat_id:
+        return
+
+    now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
     payload = {
         "chat_id": chat_id,
         "text": f"⏰ 执行时间: {now.strftime('%Y-%m-%d %H:%M:%S')}\n\n{msg}",
@@ -73,10 +108,42 @@ def send_message(msg, bot_token, chat_id):
     except Exception as e:
         print(f"❌ 发送 Telegram 消息失败: {e}")
 
+# 发送 ntfy 消息
+def send_ntfy_message(msg, config):
+    ntfy_config = config.get('ntfy', {})
+    if not ntfy_config.get('enable') or not ntfy_config.get('topic'):
+        return
+
+    # 清理 ntfy 不支持的 HTML 标签
+    clean_msg = re.sub('<[^<]+?>', '', msg)
+
+    server_url = ntfy_config.get('server')
+    topic = ntfy_config.get('topic')
+    user = ntfy_config.get('user')
+    password = ntfy_config.get('password')
+
+    now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
+    full_msg = f"⏰ 执行时间: {now.strftime('%Y-%m-%d %H:%M:%S')}\n\n{clean_msg}"
+
+    auth = None
+    if user and password:
+        auth = (user, password)
+
+    try:
+        requests.post(
+            f"{server_url}/{topic}",
+            data=full_msg.encode('utf-8'),
+            headers={"Title": "69yun 签到提醒"},
+            auth=auth
+        )
+    except Exception as e:
+        print(f"❌ 发送 ntfy 消息失败: {e}")
+
 # 登录并签到
-def checkin(account, domain, bot_token, chat_id):
+def checkin(account, config):
+    domain = config['domain']
     user, password = account['user'], account['pass']
-    account_info = f"🔹 地址: {domain}\n🔑 账号: {user}\n🔒 密码: {password}\n"
+    account_info = f"🔹 地址: {domain}\n🔑 账号: {user}\n"
 
     # 登录
     login_response = requests.post(
@@ -93,7 +160,9 @@ def checkin(account, domain, bot_token, chat_id):
 
     if login_response.status_code != 200 or login_response.json().get("ret") != 1:
         err_msg = f"❌ 登录失败: {login_response.json().get('msg', '未知错误')}"
-        send_message(account_info + err_msg, bot_token, chat_id)
+        full_err_msg = account_info + err_msg
+        send_telegram_message(full_err_msg, config)
+        send_ntfy_message(full_err_msg, config)
         return err_msg
 
     cookies = login_response.cookies
@@ -115,10 +184,11 @@ def checkin(account, domain, bot_token, chat_id):
     result_msg = checkin_result.get('msg', '签到结果未知')
     result_emoji = "✅" if checkin_result.get('ret') == 1 else "⚠️"
 
-    user_info = fetch_and_extract_info(domain, {'Cookie': '; '.join([f"{key}={value}" for key, value in cookies.items()])})
-    final_msg = f"{account_info}{user_info}🎉 签到结果: {result_emoji} {result_msg}\n"
+    user_info_msg = fetch_and_extract_info(domain, {'Cookie': '; '.join([f"{key}={value}" for key, value in cookies.items()])})
+    final_msg = f"{account_info}{user_info_msg}🎉 签到结果: {result_emoji} {result_msg}\n"
 
-    send_message(final_msg, bot_token, chat_id)
+    send_telegram_message(final_msg, config)
+    send_ntfy_message(final_msg, config)
     return final_msg
 
 # 主函数
@@ -126,4 +196,4 @@ if __name__ == "__main__":
     config = generate_config()
     for account in config.get("accounts", []):
         print("📌 正在签到...")
-        print(checkin(account, config['domain'], config['BotToken'], config['ChatID']))
+        print(checkin(account, config))

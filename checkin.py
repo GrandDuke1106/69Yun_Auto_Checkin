@@ -133,7 +133,7 @@ def send_ntfy_message(msg, config):
         requests.post(
             f"{server_url}/{topic}",
             data=full_msg.encode('utf-8'),
-            headers={"Title": "69yun 签到提醒"},
+            headers={"Title": "69yun 签到提醒".encode('utf-8')},
             auth=auth
         )
     except Exception as e:
@@ -185,7 +185,7 @@ def checkin(account, config):
     result_emoji = "✅" if checkin_result.get('ret') == 1 else "⚠️"
 
     user_info_msg = fetch_and_extract_info(domain, {'Cookie': '; '.join([f"{key}={value}" for key, value in cookies.items()])})
-    final_msg = f"{account_info}{user_info_msg}🎉 签到结果: {result_emoji} {result_msg}\n\n"
+    final_msg = f"{account_info}{user_info_msg}🎉 签到结果: {result_emoji} {result_msg}\n"
 
     send_telegram_message(final_msg, config)
     send_ntfy_message(final_msg, config)
@@ -197,3 +197,4 @@ if __name__ == "__main__":
     for account in config.get("accounts", []):
         print("📌 正在签到...")
         print(checkin(account, config))
+        print("--------------------------------------------------")

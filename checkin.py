@@ -6,9 +6,14 @@ import re
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
+# 设置一个通用的浏览器 User-Agent，防止被识别为脚本
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'
+
 # 解析用户信息
 def fetch_and_extract_info(domain, headers):
     url = f"{domain}/user"
+    # 确保 User-Agent 在 headers 中
+    headers['User-Agent'] = USER_AGENT
     response = requests.get(url, headers=headers)
 
     if response.status_code != 200:
@@ -104,7 +109,7 @@ def send_telegram_message(msg, config):
         "disable_web_page_preview": True  # 防止 Telegram 预览链接
     }
     try:
-        requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", data=payload)
+        requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", data=payload, headers={'User-Agent': USER_AGENT})
     except Exception as e:
         print(f"❌ 发送 Telegram 消息失败: {e}")
 
@@ -133,7 +138,10 @@ def send_ntfy_message(msg, config):
         requests.post(
             f"{server_url}/{topic}",
             data=full_msg.encode('utf-8'),
-            headers={"Title": "69yun 签到提醒".encode('utf-8')},
+            headers={
+                "Title": "69yun 签到提醒".encode('utf-8'),
+                'User-Agent': USER_AGENT
+            },
             auth=auth
         )
     except Exception as e:
@@ -146,16 +154,17 @@ def checkin(account, config):
     account_info = f"🔹 地址: {domain}\n🔑 账号: {user}\n"
 
     # 登录
+    login_headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': USER_AGENT,
+        'Accept': 'application/json',
+        'Origin': domain,
+        'Referer': f"{domain}/auth/login",
+    }
     login_response = requests.post(
         f"{domain}/auth/login",
         json={'email': user, 'passwd': password, 'remember_me': 'on', 'code': ""},
-        headers={
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'Origin': domain,
-            'Referer': f"{domain}/auth/login",
-        }
+        headers=login_headers
     )
 
     if login_response.status_code != 200 or login_response.json().get("ret") != 1:
@@ -169,22 +178,28 @@ def checkin(account, config):
     time.sleep(1)
 
     # 签到
+    checkin_headers = {
+        'Cookie': '; '.join([f"{key}={value}" for key, value in cookies.items()]),
+        'User-Agent': USER_AGENT,
+        'Accept': 'application/json',
+        'Origin': domain,
+        'Referer': f"{domain}/user/panel"
+    }
     checkin_response = requests.post(
         f"{domain}/user/checkin",
-        headers={
-            'Cookie': '; '.join([f"{key}={value}" for key, value in cookies.items()]),
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'Origin': domain,
-            'Referer': f"{domain}/user/panel"
-        }
+        headers=checkin_headers
     )
 
     checkin_result = checkin_response.json() if checkin_response.status_code == 200 else {}
     result_msg = checkin_result.get('msg', '签到结果未知')
     result_emoji = "✅" if checkin_result.get('ret') == 1 else "⚠️"
 
-    user_info_msg = fetch_and_extract_info(domain, {'Cookie': '; '.join([f"{key}={value}" for key, value in cookies.items()])})
+    # 获取用户信息时也传入包含 User-Agent 的 headers
+    fetch_headers = {
+        'Cookie': '; '.join([f"{key}={value}" for key, value in cookies.items()]),
+        'User-Agent': USER_AGENT
+    }
+    user_info_msg = fetch_and_extract_info(domain, fetch_headers)
     final_msg = f"{account_info}{user_info_msg}🎉 签到结果: {result_emoji} {result_msg}\n"
 
     send_telegram_message(final_msg, config)
@@ -197,4 +212,3 @@ if __name__ == "__main__":
     for account in config.get("accounts", []):
         print("📌 正在签到...")
         print(checkin(account, config))
-        print("--------------------------------------------------")
